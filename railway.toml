@@ -2,5 +2,6 @@
 builder = "nixpacks"
 
 [deploy]
+preDeployCommand = "node src/migrate.js"
 startCommand = "node server.js"
 restartPolicyType = "on_failure"
