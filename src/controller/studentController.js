@@ -105,6 +105,7 @@ const loginStudent = (req, res) => {
         year_level: student.year_level ?? null,
         strand: student.strand ?? null,
         course: student.course ?? null,
+        section: student.section ?? null,
         role: "user",
       },
     });
