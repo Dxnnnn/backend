@@ -1,14 +1,14 @@
 const db = require("../config/db");
 const crypto = require("crypto");
 
-const VALID_TERMS = new Set(["1st Semester", "2nd Semester", "Summer"]);
+const VALID_TERMS = new Set(["1st Semester", "2nd Semester", "Summer", "Quarter 1 & 2", "Quarter 3 & 4"]);
 
 function ensureTable(callback) {
   const sql = `
     CREATE TABLE IF NOT EXISTS semesters (
       id VARCHAR(36) NOT NULL,
       school_year VARCHAR(20) NOT NULL,
-      term ENUM('1st Semester','2nd Semester','Summer') NOT NULL,
+      term VARCHAR(50) NOT NULL,
       subjects TEXT NOT NULL,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
