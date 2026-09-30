@@ -126,6 +126,63 @@ CREATE TABLE IF NOT EXISTS \`survey_questions\` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
+// ── Safe column alterations ────────────────────────────────────────────────
+// These run after CREATE TABLE IF NOT EXISTS so existing production DBs get
+// the schema updates without dropping any data.
+// Each statement is wrapped in a stored procedure that checks the information
+// schema first, making them safe to run on every deploy (idempotent).
+const alterSql = `
+-- 1. Widen faculty.department from VARCHAR(150) to TEXT
+DROP PROCEDURE IF EXISTS alter_faculty_department;
+CREATE PROCEDURE alter_faculty_department()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'faculty'
+      AND COLUMN_NAME  = 'department'
+      AND DATA_TYPE    = 'varchar'
+  ) THEN
+    ALTER TABLE \`faculty\` MODIFY COLUMN \`department\` TEXT NOT NULL;
+  END IF;
+END;
+CALL alter_faculty_department();
+DROP PROCEDURE IF EXISTS alter_faculty_department;
+
+-- 2. Widen faculty.semester from VARCHAR(50) to TEXT
+DROP PROCEDURE IF EXISTS alter_faculty_semester;
+CREATE PROCEDURE alter_faculty_semester()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'faculty'
+      AND COLUMN_NAME  = 'semester'
+      AND DATA_TYPE    = 'varchar'
+  ) THEN
+    ALTER TABLE \`faculty\` MODIFY COLUMN \`semester\` TEXT DEFAULT NULL;
+  END IF;
+END;
+CALL alter_faculty_semester();
+DROP PROCEDURE IF EXISTS alter_faculty_semester;
+
+-- 3. Add faculty.profile_image if it does not exist
+DROP PROCEDURE IF EXISTS alter_faculty_profile_image;
+CREATE PROCEDURE alter_faculty_profile_image()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'faculty'
+      AND COLUMN_NAME  = 'profile_image'
+  ) THEN
+    ALTER TABLE \`faculty\` ADD COLUMN \`profile_image\` TEXT DEFAULT NULL;
+  END IF;
+END;
+CALL alter_faculty_profile_image();
+DROP PROCEDURE IF EXISTS alter_faculty_profile_image;
+`;
+
 db.connect((err) => {
   if (err) {
     console.error("Migration failed - connection error:", err.message);
@@ -137,8 +194,15 @@ db.connect((err) => {
       console.error("Migration failed:", err.message);
       process.exit(1);
     }
-    console.log("Migration completed successfully.");
-    db.end();
-    process.exit(0);
+    console.log("Tables created/verified. Running schema alterations...");
+    db.query(alterSql, (err2) => {
+      if (err2) {
+        console.error("Alteration failed:", err2.message);
+        process.exit(1);
+      }
+      console.log("Migration completed successfully.");
+      db.end();
+      process.exit(0);
+    });
   });
 });

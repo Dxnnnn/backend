@@ -1,16 +1,16 @@
 const db = require("../config/db");
 
 const createFaculty = (req, res) => {
-  const { name, email, position, department, subjects, semester } = req.body;
+  const { name, email, position, department, subjects, semester, profile_image } = req.body;
 
   if (!name || !department) {
     return res.status(400).json({ success: false, message: "Name and department are required." });
   }
 
   const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects ?? "");
-  const sql = `INSERT INTO faculty (name, email, position, department, subjects, semester) VALUES (?, ?, ?, ?, ?, ?)`;
+  const sql = `INSERT INTO faculty (name, email, position, department, subjects, semester, profile_image) VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
-  db.query(sql, [name.trim(), email?.trim() ?? null, position?.trim() ?? null, department.trim(), subjectsStr, semester ?? null], (err, result) => {
+  db.query(sql, [name.trim(), email?.trim() ?? null, position?.trim() ?? null, department.trim(), subjectsStr, semester ?? null, profile_image ?? null], (err, result) => {
     if (err) return res.status(500).json({ success: false, message: "Failed to create faculty.", error: err.message });
 
     return res.status(201).json({
@@ -24,6 +24,7 @@ const createFaculty = (req, res) => {
         department: department.trim(),
         subjects: subjectsStr,
         semester: semester ?? null,
+        profile_image: profile_image ?? null,
         created_at: new Date().toISOString(),
       },
     });
@@ -33,7 +34,7 @@ const createFaculty = (req, res) => {
 const getAllFaculty = (req, res) => {
   const { semester } = req.query;
 
-  let sql = `SELECT id, name, email, position, department, subjects, semester, is_active, created_at FROM faculty`;
+  let sql = `SELECT id, name, email, position, department, subjects, semester, profile_image, is_active, created_at FROM faculty`;
   const params = [];
 
   // Always filter out inactive faculty
@@ -65,7 +66,7 @@ const getFacultyByDepartment = (req, res) => {
   const { semester } = req.query;
 
   // Use LIKE so "Senior High School" matches "Senior High School (Grade 11 - STEM - Section A)"
-  let sql = `SELECT id, name, email, position, department, subjects, semester, created_at FROM faculty WHERE department LIKE ? AND is_active = 1`;
+  let sql = `SELECT id, name, email, position, department, subjects, semester, profile_image, created_at FROM faculty WHERE department LIKE ? AND is_active = 1`;
   const params = [`%${department}%`];
 
   if (semester) {
@@ -82,10 +83,17 @@ const getFacultyByDepartment = (req, res) => {
 };
 
 const deleteFaculty = (req, res) => {
-  db.query("DELETE FROM faculty WHERE id = ?", [req.params.id], (err, result) => {
+  const { id } = req.params;
+  // Delete all evaluation submissions for this faculty first
+  db.query("DELETE FROM evaluation_submissions WHERE faculty_id = ?", [String(id)], (err) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
-    return res.status(200).json({ success: true, message: "Faculty deleted." });
+
+    // Then delete the faculty
+    db.query("DELETE FROM faculty WHERE id = ?", [id], (err2, result) => {
+      if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
+      if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
+      return res.status(200).json({ success: true, message: "Faculty and their evaluation records deleted." });
+    });
   });
 };
 
@@ -100,7 +108,7 @@ const toggleFacultyStatus = (req, res) => {
 
 const updateFaculty = (req, res) => {
   const { id } = req.params;
-  const { name, email, position, department, subjects, semester } = req.body;
+  const { name, email, position, department, subjects, semester, profile_image } = req.body;
 
   if (!name || !department) {
     return res.status(400).json({ success: false, message: "Name and department are required." });
@@ -109,8 +117,8 @@ const updateFaculty = (req, res) => {
   const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects ?? "");
 
   db.query(
-    "UPDATE faculty SET name=?, email=?, position=?, department=?, subjects=?, semester=? WHERE id=?",
-    [name.trim(), email?.trim() ?? null, position?.trim() ?? null, department.trim(), subjectsStr, semester ?? null, id],
+    "UPDATE faculty SET name=?, email=?, position=?, department=?, subjects=?, semester=?, profile_image=? WHERE id=?",
+    [name.trim(), email?.trim() ?? null, position?.trim() ?? null, department.trim(), subjectsStr, semester ?? null, profile_image ?? null, id],
     (err, result) => {
       if (err) return res.status(500).json({ success: false, message: "Failed to update faculty.", error: err.message });
       if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });

@@ -62,10 +62,25 @@ const getAllStudents = (req, res) => {
 };
 
 const deleteStudent = (req, res) => {
-  db.query("DELETE FROM students WHERE id = ?", [req.params.id], (err, result) => {
+  const { id } = req.params;
+  // First get the student_id to delete their submissions
+  db.query("SELECT student_id FROM students WHERE id = ?", [id], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Student not found." });
-    return res.status(200).json({ success: true, message: "Student deleted." });
+    if (results.length === 0) return res.status(404).json({ success: false, message: "Student not found." });
+
+    const studentId = results[0].student_id;
+
+    // Delete their evaluation submissions first
+    db.query("DELETE FROM evaluation_submissions WHERE student_id = ?", [studentId], (err2) => {
+      if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
+
+      // Then delete the student
+      db.query("DELETE FROM students WHERE id = ?", [id], (err3, result) => {
+        if (err3) return res.status(500).json({ success: false, message: "Database error.", error: err3.message });
+        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Student not found." });
+        return res.status(200).json({ success: true, message: "Student and their evaluation records deleted." });
+      });
+    });
   });
 };
 

@@ -50,11 +50,24 @@ const getAllSchoolHeads = (req, res) => {
 
 const deleteSchoolHead = (req, res) => {
   const { id } = req.params;
-
-  db.query("DELETE FROM school_heads WHERE id = ?", [id], (err, result) => {
+  // First get the id_number to delete their submissions
+  db.query("SELECT id_number FROM school_heads WHERE id = ?", [id], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "School head not found." });
-    return res.status(200).json({ success: true, message: "School head deleted." });
+    if (results.length === 0) return res.status(404).json({ success: false, message: "School head not found." });
+
+    const idNumber = results[0].id_number;
+
+    // Delete their evaluation submissions (school_head source)
+    db.query("DELETE FROM evaluation_submissions WHERE student_id = ? AND source = 'school_head'", [idNumber], (err2) => {
+      if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
+
+      // Then delete the school head
+      db.query("DELETE FROM school_heads WHERE id = ?", [id], (err3, result) => {
+        if (err3) return res.status(500).json({ success: false, message: "Database error.", error: err3.message });
+        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "School head not found." });
+        return res.status(200).json({ success: true, message: "School head and their evaluation records deleted." });
+      });
+    });
   });
 };
 

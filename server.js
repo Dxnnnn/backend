@@ -11,6 +11,7 @@ const facultyRoutes = require("./src/routes/faculty");
 const evaluationsRoutes = require("./src/routes/evaluations");
 const surveyQuestionsRoutes = require("./src/routes/surveyQuestions");
 const semestersRoutes = require("./src/routes/semesters");
+const uploadRoutes = require("./src/routes/upload");
 const errorHandler = require("./src/middleware/errorHandler");
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/api/faculty", facultyRoutes);
 app.use("/api/evaluations", evaluationsRoutes);
 app.use("/api/survey-questions", surveyQuestionsRoutes);
 app.use("/api/semesters", semestersRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Global error handler (must be last)
 app.use(errorHandler);
