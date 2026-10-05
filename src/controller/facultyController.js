@@ -84,16 +84,11 @@ const getFacultyByDepartment = (req, res) => {
 
 const deleteFaculty = (req, res) => {
   const { id } = req.params;
-  // Delete all evaluation submissions for this faculty first
-  db.query("DELETE FROM evaluation_submissions WHERE faculty_id = ?", [String(id)], (err) => {
+  // FK ON DELETE CASCADE automatically removes evaluation_submissions
+  db.query("DELETE FROM faculty WHERE id = ?", [id], (err, result) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-
-    // Then delete the faculty
-    db.query("DELETE FROM faculty WHERE id = ?", [id], (err2, result) => {
-      if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
-      if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
-      return res.status(200).json({ success: true, message: "Faculty and their evaluation records deleted." });
-    });
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
+    return res.status(200).json({ success: true, message: "Faculty and their evaluation records deleted." });
   });
 };
 

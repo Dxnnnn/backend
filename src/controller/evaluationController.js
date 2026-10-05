@@ -49,41 +49,96 @@ const createEvaluation = (req, res) => {
   function insertSubmission() {
     const submissionId = id || require("crypto").randomUUID();
     const rawDate = submitted_at || new Date().toISOString();
-    // Convert ISO 8601 (2026-08-05T20:04:36.515Z) → MySQL datetime (2026-08-05 20:04:36)
     const submittedAt = rawDate.replace("T", " ").replace("Z", "").split(".")[0];
 
-    const sql = `
-      INSERT INTO evaluation_submissions
-        (id, student_id, student_name, faculty_id, faculty_name, department, subject, semester, remarks, scoring_answers, personal_answers, submitted_at, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE id = id
-    `;
-
-    db.query(
-      sql,
-      [
-        submissionId,
-        student_id ?? null,
-        student_name ?? null,
-        String(faculty_id),
-        faculty_name,
-        department,
-        subject,
-        semester ?? null,
-        remarks ?? null,
-        JSON.stringify(scoring_answers),
-        JSON.stringify(personal_answers ?? {}),
-        submittedAt,
-        source === "school_head" ? "school_head" : "student",
-      ],
-      (err) => {
-        if (err) {
-          console.error("[evaluations] Database error:", err.message, err.code);
-          return res.status(500).json({ success: false, message: `Database error: ${err.message}` });
-        }
-        return res.status(201).json({ success: true, id: submissionId });
+    // Look up the semester_id from the semester display text (e.g. "SY-2025-2026 1st Semester")
+    let schoolYear = null;
+    let term = null;
+    if (semester) {
+      const match = semester.match(/^SY-(.+?)\s+(.+)$/);
+      if (match) {
+        schoolYear = match[1];
+        term = match[2];
       }
-    );
+    }
+
+    const isSchoolHead = source === "school_head";
+
+    const lookupAndInsert = (semesterId, schoolHeadId) => {
+      const sql = `
+        INSERT INTO evaluation_submissions
+          (id, student_id, student_name, faculty_id, faculty_name, department, subject, semester, semester_id, school_head_id, remarks, scoring_answers, personal_answers, submitted_at, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE id = id
+      `;
+
+      db.query(
+        sql,
+        [
+          submissionId,
+          student_id ?? null,
+          student_name ?? null,
+          String(faculty_id),
+          faculty_name,
+          department,
+          subject,
+          semester ?? null,
+          semesterId ?? null,
+          schoolHeadId ?? null,
+          remarks ?? null,
+          JSON.stringify(scoring_answers),
+          JSON.stringify(personal_answers ?? {}),
+          submittedAt,
+          isSchoolHead ? "school_head" : "student",
+        ],
+        (err) => {
+          if (err) {
+            console.error("[evaluations] Database error:", err.message, err.code);
+            return res.status(500).json({ success: false, message: `Database error: ${err.message}` });
+          }
+          return res.status(201).json({ success: true, id: submissionId });
+        }
+      );
+    };
+
+    // Look up semester_id and school_head_id in parallel then insert
+    let semesterId = null;
+    let schoolHeadId = null;
+    let pending = 0;
+
+    function tryInsert() {
+      pending--;
+      if (pending === 0) lookupAndInsert(semesterId, schoolHeadId);
+    }
+
+    // Semester lookup
+    if (schoolYear && term) {
+      pending++;
+      db.query(
+        "SELECT id FROM semesters WHERE school_year = ? AND term = ? LIMIT 1",
+        [schoolYear, term],
+        (err, rows) => {
+          if (!err && rows && rows.length > 0) semesterId = rows[0].id;
+          tryInsert();
+        }
+      );
+    }
+
+    // School head lookup — student_id stores the school head's id_number when source = school_head
+    if (isSchoolHead && student_id) {
+      pending++;
+      db.query(
+        "SELECT id FROM school_heads WHERE id_number = ? LIMIT 1",
+        [student_id],
+        (err, rows) => {
+          if (!err && rows && rows.length > 0) schoolHeadId = rows[0].id;
+          tryInsert();
+        }
+      );
+    }
+
+    // If no lookups needed, insert immediately
+    if (pending === 0) lookupAndInsert(semesterId, schoolHeadId);
   }
 };
 

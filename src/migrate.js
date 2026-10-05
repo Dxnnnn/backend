@@ -183,6 +183,148 @@ CALL alter_faculty_profile_image();
 DROP PROCEDURE IF EXISTS alter_faculty_profile_image;
 `;
 
+// ── Foreign Key alterations ────────────────────────────────────────────────
+// Idempotent — each step checks information_schema before acting.
+const fkSql = `
+-- 1. Convert evaluation_submissions.faculty_id from VARCHAR(50) to INT
+--    (required to match faculty.id which is INT)
+DROP PROCEDURE IF EXISTS fk_fix_faculty_id_type;
+CREATE PROCEDURE fk_fix_faculty_id_type()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'evaluation_submissions'
+      AND COLUMN_NAME  = 'faculty_id'
+      AND DATA_TYPE    = 'varchar'
+  ) THEN
+    -- Delete any orphaned rows first to avoid FK violation
+    DELETE es FROM evaluation_submissions es
+    LEFT JOIN faculty f ON CAST(es.faculty_id AS UNSIGNED) = f.id
+    WHERE f.id IS NULL;
+
+    ALTER TABLE \`evaluation_submissions\`
+      MODIFY COLUMN \`faculty_id\` INT NOT NULL;
+  END IF;
+END;
+CALL fk_fix_faculty_id_type();
+DROP PROCEDURE IF EXISTS fk_fix_faculty_id_type;
+
+-- 2. Add FK: evaluation_submissions.faculty_id → faculty.id (CASCADE)
+DROP PROCEDURE IF EXISTS fk_add_submission_faculty;
+CREATE PROCEDURE fk_add_submission_faculty()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA    = DATABASE()
+      AND TABLE_NAME      = 'evaluation_submissions'
+      AND CONSTRAINT_NAME = 'fk_submission_faculty'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD CONSTRAINT \`fk_submission_faculty\`
+      FOREIGN KEY (\`faculty_id\`) REFERENCES \`faculty\`(\`id\`)
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END;
+CALL fk_add_submission_faculty();
+DROP PROCEDURE IF EXISTS fk_add_submission_faculty;
+
+-- 3. Add FK: evaluation_submissions.student_id → students.student_id (SET NULL)
+DROP PROCEDURE IF EXISTS fk_add_submission_student;
+CREATE PROCEDURE fk_add_submission_student()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA    = DATABASE()
+      AND TABLE_NAME      = 'evaluation_submissions'
+      AND CONSTRAINT_NAME = 'fk_submission_student'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD CONSTRAINT \`fk_submission_student\`
+      FOREIGN KEY (\`student_id\`) REFERENCES \`students\`(\`student_id\`)
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END;
+CALL fk_add_submission_student();
+DROP PROCEDURE IF EXISTS fk_add_submission_student;
+
+-- 4. Add semester_id column to evaluation_submissions if it does not exist
+DROP PROCEDURE IF EXISTS fk_add_semester_id_col;
+CREATE PROCEDURE fk_add_semester_id_col()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'evaluation_submissions'
+      AND COLUMN_NAME  = 'semester_id'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD COLUMN \`semester_id\` VARCHAR(36) DEFAULT NULL;
+  END IF;
+END;
+CALL fk_add_semester_id_col();
+DROP PROCEDURE IF EXISTS fk_add_semester_id_col;
+
+-- 5. Add FK: evaluation_submissions.semester_id → semesters.id (SET NULL)
+DROP PROCEDURE IF EXISTS fk_add_submission_semester;
+CREATE PROCEDURE fk_add_submission_semester()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA    = DATABASE()
+      AND TABLE_NAME      = 'evaluation_submissions'
+      AND CONSTRAINT_NAME = 'fk_submission_semester'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD CONSTRAINT \`fk_submission_semester\`
+      FOREIGN KEY (\`semester_id\`) REFERENCES \`semesters\`(\`id\`)
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END;
+CALL fk_add_submission_semester();
+DROP PROCEDURE IF EXISTS fk_add_submission_semester;
+
+-- 6. Add school_head_id column to evaluation_submissions if it does not exist
+DROP PROCEDURE IF EXISTS fk_add_school_head_id_col;
+CREATE PROCEDURE fk_add_school_head_id_col()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'evaluation_submissions'
+      AND COLUMN_NAME  = 'school_head_id'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD COLUMN \`school_head_id\` INT DEFAULT NULL;
+  END IF;
+END;
+CALL fk_add_school_head_id_col();
+DROP PROCEDURE IF EXISTS fk_add_school_head_id_col;
+
+-- 7. Add FK: evaluation_submissions.school_head_id → school_heads.id (SET NULL)
+DROP PROCEDURE IF EXISTS fk_add_submission_school_head;
+CREATE PROCEDURE fk_add_submission_school_head()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA    = DATABASE()
+      AND TABLE_NAME      = 'evaluation_submissions'
+      AND CONSTRAINT_NAME = 'fk_submission_school_head'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+  ) THEN
+    ALTER TABLE \`evaluation_submissions\`
+      ADD CONSTRAINT \`fk_submission_school_head\`
+      FOREIGN KEY (\`school_head_id\`) REFERENCES \`school_heads\`(\`id\`)
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END;
+CALL fk_add_submission_school_head();
+DROP PROCEDURE IF EXISTS fk_add_submission_school_head;
+`;
+
 db.connect((err) => {
   if (err) {
     console.error("Migration failed - connection error:", err.message);
@@ -200,9 +342,16 @@ db.connect((err) => {
         console.error("Alteration failed:", err2.message);
         process.exit(1);
       }
-      console.log("Migration completed successfully.");
-      db.end();
-      process.exit(0);
+      console.log("Schema alterations done. Applying foreign keys...");
+      db.query(fkSql, (err3) => {
+        if (err3) {
+          console.error("Foreign key migration failed:", err3.message);
+          process.exit(1);
+        }
+        console.log("Migration completed successfully.");
+        db.end();
+        process.exit(0);
+      });
     });
   });
 });
