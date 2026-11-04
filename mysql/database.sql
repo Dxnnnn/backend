@@ -173,3 +173,23 @@ CREATE TABLE IF NOT EXISTS `survey_questions` (  `id` varchar(36) NOT NULL,
   KEY `idx_active` (`is_active`),
   KEY `idx_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ── subjects (college, senior high, junior high subjects) ───────────────────
+CREATE TABLE IF NOT EXISTS `subjects` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(200) NOT NULL,
+  `department` ENUM('junior-high','senior-high','college') NOT NULL DEFAULT 'college',
+  `year_level` varchar(50) DEFAULT NULL,
+  `course` varchar(255) DEFAULT NULL,
+  `grade` varchar(255) DEFAULT NULL,
+  `strand` varchar(255) DEFAULT NULL,
+  `faculty_id` int DEFAULT NULL,
+  `faculty_name` varchar(150) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_department` (`department`),
+  KEY `idx_course` (`course`(100)),
+  KEY `idx_year_level` (`year_level`),
+  CONSTRAINT `fk_subjects_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculty` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

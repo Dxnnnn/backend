@@ -2,6 +2,7 @@ const db = require("../config/db");
 const crypto = require("crypto");
 
 const VALID_AUDIENCES = new Set(["student", "school_head"]);
+const VALID_LEVELS = new Set(["all", "junior-high", "senior-high", "college"]);
 const VALID_TYPES = new Set(["rating", "essay", "yes_no"]);
 const VALID_STATUS = new Set(["published", "draft"]);
 
@@ -10,6 +11,7 @@ function mapRow(row) {
     id: row.id,
     text: row.text,
     audience: row.audience,
+    studentLevel: row.student_level || "all",
     section: row.section || "scoring",
     category: row.category || "Other",
     evaluationType: row.evaluation_type || "rating",
@@ -59,7 +61,7 @@ const getQuestions = (req, res) => {
       return res.status(500).json({ success: false, message: "Database error.", error: tableErr.message });
     }
 
-    const { audience, section, active_only } = req.query;
+    const { audience, section, active_only, student_level } = req.query;
     let sql = `SELECT * FROM survey_questions`;
     const params = [];
     const conditions = [];
@@ -71,6 +73,10 @@ const getQuestions = (req, res) => {
     if (section) {
       conditions.push(`section = ?`);
       params.push(section);
+    }
+    if (student_level && VALID_LEVELS.has(String(student_level))) {
+      conditions.push(`(student_level = ? OR student_level = 'all')`);
+      params.push(student_level);
     }
     if (active_only === "1" || active_only === "true") {
       conditions.push(`is_active = 1`);
@@ -101,6 +107,7 @@ const createQuestion = (req, res) => {
       id,
       text,
       audience = "student",
+      studentLevel = "all",
       section = "scoring",
       category = "Other",
       evaluationType = "rating",
@@ -125,12 +132,13 @@ const createQuestion = (req, res) => {
     const is_active = isActive ? 1 : 0;
     const requiredFlag = required === false ? 0 : 1;
     const statusVal = VALID_STATUS.has(status) ? status : "draft";
+    const levelVal = VALID_LEVELS.has(studentLevel) ? studentLevel : "all";
 
     const insert = (sortOrder) => {
       const sql = `
         INSERT INTO survey_questions
-          (id, text, audience, section, category, evaluation_type, required, is_active, status, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, text, audience, student_level, section, category, evaluation_type, required, is_active, status, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       db.query(
         sql,
@@ -138,6 +146,7 @@ const createQuestion = (req, res) => {
           questionId,
           String(text).trim(),
           audience,
+          levelVal,
           section || "scoring",
           category || "Other",
           evaluation_type,
@@ -158,6 +167,7 @@ const createQuestion = (req, res) => {
                   id: questionId,
                   text: String(text).trim(),
                   audience,
+                  studentLevel: levelVal,
                   section: section || "scoring",
                   category: category || "Other",
                   evaluationType,
@@ -315,30 +325,34 @@ const reorderQuestions = (req, res) => {
   });
 };
 
-// POST /api/survey-questions/bulk-status  body: { audience, status, isActive }
+// POST /api/survey-questions/bulk-status  body: { audience, studentLevel, status, isActive }
 const bulkStatus = (req, res) => {
-  const { audience, status, isActive } = req.body || {};
+  const { audience, studentLevel, status, isActive } = req.body || {};
   if (!VALID_AUDIENCES.has(audience)) {
     return res.status(400).json({ success: false, message: "Invalid audience." });
   }
 
   const statusVal = status && VALID_STATUS.has(status) ? status : isActive ? "published" : "draft";
   const activeVal = isActive === undefined ? (statusVal === "published" ? 1 : 0) : isActive ? 1 : 0;
+  const levelVal = studentLevel && VALID_LEVELS.has(studentLevel) ? studentLevel : null;
 
-  db.query(
-    `UPDATE survey_questions SET status = ?, is_active = ? WHERE audience = ?`,
-    [statusVal, activeVal, audience],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({ success: false, message: "Failed to update status.", error: err.message });
-      }
-      return res.status(200).json({
-        success: true,
-        message: "Status updated.",
-        affected: result.affectedRows,
-      });
-    },
-  );
+  const sql = levelVal
+    ? `UPDATE survey_questions SET status = ?, is_active = ? WHERE audience = ? AND student_level = ?`
+    : `UPDATE survey_questions SET status = ?, is_active = ? WHERE audience = ?`;
+  const params = levelVal
+    ? [statusVal, activeVal, audience, levelVal]
+    : [statusVal, activeVal, audience];
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: "Failed to update status.", error: err.message });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Status updated.",
+      affected: result.affectedRows,
+    });
+  });
 };
 
 // POST /api/survey-questions/bulk  body: { questions: [...] }  — for CSV import / migration

@@ -22,17 +22,48 @@ const createEvaluation = (req, res) => {
     return res.status(400).json({ success: false, message: "Required fields missing." });
   }
 
-  // ── Duplicate prevention: one submission per student per faculty per subject per semester ──
-  if (student_id) {
+  // ── Duplicate prevention ──────────────────────────────────────────────────
+  const isSchoolHeadSource = source === "school_head";
+
+  if (isSchoolHeadSource) {
+    // For school heads: check by school_head lookup + faculty_id + semester
+    // We look up school_head_id first, then check duplicates
+    db.query(
+      "SELECT id FROM school_heads WHERE id_number = ? LIMIT 1",
+      [student_id],
+      (shErr, shRows) => {
+        if (shErr) return res.status(500).json({ success: false, message: "Database error.", error: shErr.message });
+        const shId = shRows?.[0]?.id ?? null;
+        if (shId) {
+          db.query(
+            `SELECT id FROM evaluation_submissions WHERE school_head_id = ? AND faculty_id = ? AND (semester = ? OR semester IS NULL) AND source = 'school_head' LIMIT 1`,
+            [shId, String(faculty_id), semester ?? null],
+            (checkErr, existing) => {
+              if (checkErr) return res.status(500).json({ success: false, message: "Database error.", error: checkErr.message });
+              if (existing && existing.length > 0) {
+                return res.status(409).json({
+                  success: false,
+                  message: "You have already evaluated this faculty member this semester.",
+                  duplicate: true,
+                });
+              }
+              insertSubmission();
+            }
+          );
+        } else {
+          insertSubmission();
+        }
+      }
+    );
+  } else if (student_id) {
+    // For students: check by student_id + faculty_id + subject + semester
     const checkSql = `
       SELECT id FROM evaluation_submissions
       WHERE student_id = ? AND faculty_id = ? AND subject = ? AND (semester = ? OR (semester IS NULL AND ? IS NULL))
       LIMIT 1
     `;
     db.query(checkSql, [student_id, String(faculty_id), subject, semester ?? null, semester ?? null], (checkErr, existing) => {
-      if (checkErr) {
-        return res.status(500).json({ success: false, message: "Database error.", error: checkErr.message });
-      }
+      if (checkErr) return res.status(500).json({ success: false, message: "Database error.", error: checkErr.message });
       if (existing && existing.length > 0) {
         return res.status(409).json({
           success: false,
@@ -63,7 +94,6 @@ const createEvaluation = (req, res) => {
     }
 
     const isSchoolHead = source === "school_head";
-
     const lookupAndInsert = (semesterId, schoolHeadId) => {
       const sql = `
         INSERT INTO evaluation_submissions
@@ -76,8 +106,11 @@ const createEvaluation = (req, res) => {
         sql,
         [
           submissionId,
-          student_id ?? null,
-          student_name ?? null,
+          // For school_head source, store NULL for student_id to avoid FK violation
+          // (school heads are not in the students table)
+          isSchoolHead ? null : (student_id ?? null),
+          // For school_head: store full_name (student_name) for reliable lookup in evaluation-status-panel
+          isSchoolHead ? (student_name ?? student_id ?? null) : (student_name ?? null),
           String(faculty_id),
           faculty_name,
           department,

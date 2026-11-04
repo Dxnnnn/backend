@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS \`evaluation_submissions\` (
 CREATE TABLE IF NOT EXISTS \`semesters\` (
   \`id\` VARCHAR(36) NOT NULL,
   \`school_year\` VARCHAR(20) NOT NULL,
-  \`term\` ENUM('1st Semester','2nd Semester','Summer') NOT NULL,
+  \`term\` ENUM('1st Semester','2nd Semester','Summer','Quarter 1 & 2','Quarter 3 & 4') NOT NULL,
   \`subjects\` TEXT NOT NULL,
   \`is_active\` TINYINT(1) NOT NULL DEFAULT '1',
   \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -123,6 +123,25 @@ CREATE TABLE IF NOT EXISTS \`survey_questions\` (
   KEY \`idx_audience\` (\`audience\`),
   KEY \`idx_active\` (\`is_active\`),
   KEY \`idx_order\` (\`sort_order\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS \`subjects\` (
+  \`id\` int NOT NULL AUTO_INCREMENT,
+  \`name\` varchar(200) NOT NULL,
+  \`department\` ENUM('junior-high','senior-high','college') NOT NULL DEFAULT 'college',
+  \`year_level\` varchar(50) DEFAULT NULL,
+  \`course\` varchar(50) DEFAULT NULL,
+  \`grade\` varchar(10) DEFAULT NULL,
+  \`strand\` varchar(50) DEFAULT NULL,
+  \`faculty_id\` int DEFAULT NULL,
+  \`faculty_name\` varchar(150) DEFAULT NULL,
+  \`created_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  \`updated_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (\`id\`),
+  KEY \`idx_course\` (\`course\`),
+  KEY \`idx_year_level\` (\`year_level\`),
+  KEY \`idx_department\` (\`department\`),
+  CONSTRAINT \`fk_subjects_faculty\` FOREIGN KEY (\`faculty_id\`) REFERENCES \`faculty\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
@@ -181,6 +200,149 @@ BEGIN
 END;
 CALL alter_faculty_profile_image();
 DROP PROCEDURE IF EXISTS alter_faculty_profile_image;
+
+-- 4. Add student_level column to survey_questions if it does not exist
+DROP PROCEDURE IF EXISTS alter_survey_student_level;CREATE PROCEDURE alter_survey_student_level()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'survey_questions'
+      AND COLUMN_NAME  = 'student_level'
+  ) THEN
+    ALTER TABLE \`survey_questions\`
+      ADD COLUMN \`student_level\` ENUM('all','junior-high','senior-high','college') NOT NULL DEFAULT 'all'
+      AFTER \`audience\`;
+  END IF;
+END;
+CALL alter_survey_student_level();
+DROP PROCEDURE IF EXISTS alter_survey_student_level;
+
+-- 5. Rename college_subjects to subjects if old table still exists
+DROP TABLE IF EXISTS \`college_subjects\`;
+
+-- 6. Add department column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_department;
+CREATE PROCEDURE alter_subjects_department()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'department'
+  ) THEN
+    ALTER TABLE \`subjects\`
+      ADD COLUMN \`department\` ENUM('junior-high','senior-high','college') NOT NULL DEFAULT 'college'
+      AFTER \`name\`;
+  END IF;
+END;
+CALL alter_subjects_department();
+DROP PROCEDURE IF EXISTS alter_subjects_department;
+
+-- 7. Add grade column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_grade;
+CREATE PROCEDURE alter_subjects_grade()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'grade'
+  ) THEN
+    ALTER TABLE \`subjects\`
+      ADD COLUMN \`grade\` VARCHAR(10) DEFAULT NULL
+      AFTER \`course\`;
+  END IF;
+END;
+CALL alter_subjects_grade();
+DROP PROCEDURE IF EXISTS alter_subjects_grade;
+
+-- 8. Add strand column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_strand;
+CREATE PROCEDURE alter_subjects_strand()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'strand'
+  ) THEN
+    ALTER TABLE \`subjects\`
+      ADD COLUMN \`strand\` VARCHAR(50) DEFAULT NULL
+      AFTER \`grade\`;
+  END IF;
+END;
+CALL alter_subjects_strand();
+DROP PROCEDURE IF EXISTS alter_subjects_strand;
+
+-- 9. Make year_level and course nullable in subjects
+DROP PROCEDURE IF EXISTS alter_subjects_nullable;
+CREATE PROCEDURE alter_subjects_nullable()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'year_level'
+      AND IS_NULLABLE  = 'NO'
+  ) THEN
+    ALTER TABLE \`subjects\`
+      MODIFY COLUMN \`year_level\` VARCHAR(50) DEFAULT NULL,
+      MODIFY COLUMN \`course\` VARCHAR(50) DEFAULT NULL;
+  END IF;
+END;
+CALL alter_subjects_nullable();
+DROP PROCEDURE IF EXISTS alter_subjects_nullable;
+
+-- 9a. Expand semesters.term ENUM to include Quarter terms
+DROP PROCEDURE IF EXISTS alter_semesters_term_enum;
+CREATE PROCEDURE alter_semesters_term_enum()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'semesters'
+      AND COLUMN_NAME  = 'term'
+      AND COLUMN_TYPE NOT LIKE '%Quarter%'
+  ) THEN
+    ALTER TABLE \`semesters\`
+      MODIFY COLUMN \`term\` ENUM('1st Semester','2nd Semester','Summer','Quarter 1 & 2','Quarter 3 & 4') NOT NULL;
+  END IF;
+END;
+CALL alter_semesters_term_enum();
+DROP PROCEDURE IF EXISTS alter_semesters_term_enum;
+
+-- 10. Add subjects column to students if it does not existDROP PROCEDURE IF EXISTS alter_students_subjects;
+CREATE PROCEDURE alter_students_subjects()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'students'
+      AND COLUMN_NAME  = 'subjects'
+  ) THEN
+    ALTER TABLE \`students\` ADD COLUMN \`subjects\` TEXT DEFAULT NULL;
+  END IF;
+END;
+CALL alter_students_subjects();
+DROP PROCEDURE IF EXISTS alter_students_subjects;
+
+-- 11. Widen students.section from VARCHAR(10) to VARCHAR(100)
+DROP PROCEDURE IF EXISTS alter_students_section;
+CREATE PROCEDURE alter_students_section()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'students'
+      AND COLUMN_NAME  = 'section'
+      AND CHARACTER_MAXIMUM_LENGTH <= 10
+  ) THEN
+    ALTER TABLE \`students\` MODIFY COLUMN \`section\` VARCHAR(100) DEFAULT NULL;
+  END IF;
+END;
+CALL alter_students_section();
+DROP PROCEDURE IF EXISTS alter_students_section;
 `;
 
 // ── Foreign Key alterations ────────────────────────────────────────────────

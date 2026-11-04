@@ -5,11 +5,20 @@ const db = require("../config/db");
 const JWT_SECRET = process.env.JWT_SECRET || "bc_eval_jwt_secret_2026_benedicto_college";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h";
 
-const createSchoolHead = (req, res) => {
-  const { id_number, full_name, department, password } = req.body;
+// Helper: generate a secure password for school heads
+function generateSchoolHeadPassword(id_number, full_name) {
+  const prefix = "BC";
+  const namePart = (full_name || "").replace(/\s+/g, "").slice(0, 3).toLowerCase();
+  const idPart = (id_number || "").replace(/\D/g, "").slice(-3);
+  const random = Math.floor(100 + Math.random() * 900);
+  return `${prefix}${namePart}${idPart}${random}`;
+}
 
-  if (!id_number || !full_name || !department || !password) {
-    return res.status(400).json({ success: false, message: "ID number, full name, department, and password are required." });
+const createSchoolHead = (req, res) => {
+  const { id_number, full_name, department } = req.body;
+
+  if (!id_number || !full_name || !department) {
+    return res.status(400).json({ success: false, message: "ID number, full name, and department are required." });
   }
 
   const checkSql = "SELECT id FROM school_heads WHERE id_number = ?";
@@ -18,7 +27,9 @@ const createSchoolHead = (req, res) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
     if (results.length > 0) return res.status(409).json({ success: false, message: "ID number already exists." });
 
-    const hashedPassword = bcrypt.hashSync(password, 12);
+    // Auto-generate password
+    const plainPassword = generateSchoolHeadPassword(id_number.trim(), full_name.trim());
+    const hashedPassword = bcrypt.hashSync(plainPassword, 12);
     const insertSql = `INSERT INTO school_heads (id_number, full_name, department, password) VALUES (?, ?, ?, ?)`;
 
     db.query(insertSql, [id_number.trim(), full_name.trim(), department.trim(), hashedPassword], (err, result) => {
@@ -27,6 +38,8 @@ const createSchoolHead = (req, res) => {
       return res.status(201).json({
         success: true,
         message: "School head created successfully.",
+        // Return plaintext password ONCE so admin can share it
+        generatedPassword: plainPassword,
         schoolHead: {
           id: result.insertId,
           id_number: id_number.trim(),
@@ -51,14 +64,14 @@ const getAllSchoolHeads = (req, res) => {
 const deleteSchoolHead = (req, res) => {
   const { id } = req.params;
   // First get the id_number to delete their submissions
-  db.query("SELECT id_number FROM school_heads WHERE id = ?", [id], (err, results) => {
+  db.query("SELECT id, id_number FROM school_heads WHERE id = ?", [id], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
     if (results.length === 0) return res.status(404).json({ success: false, message: "School head not found." });
 
     const idNumber = results[0].id_number;
 
-    // Delete their evaluation submissions (school_head source)
-    db.query("DELETE FROM evaluation_submissions WHERE student_id = ? AND source = 'school_head'", [idNumber], (err2) => {
+    // Delete their evaluation submissions using school_head_id FK
+    db.query("DELETE FROM evaluation_submissions WHERE school_head_id = ? AND source = 'school_head'", [results[0].id], (err2) => {
       if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
 
       // Then delete the school head
@@ -142,4 +155,21 @@ const updateSchoolHead = (req, res) => {
   );
 };
 
-module.exports = { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead };
+const resetSchoolHeadPassword = (req, res) => {
+  const { id } = req.params;
+  db.query("SELECT id_number, full_name FROM school_heads WHERE id = ?", [id], (err, rows) => {
+    if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+    if (!rows.length) return res.status(404).json({ success: false, message: "School head not found." });
+
+    const { id_number, full_name } = rows[0];
+    const plainPassword = generateSchoolHeadPassword(id_number, full_name);
+    const hashedPassword = bcrypt.hashSync(plainPassword, 12);
+
+    db.query("UPDATE school_heads SET password = ? WHERE id = ?", [hashedPassword, id], (err2) => {
+      if (err2) return res.status(500).json({ success: false, message: "Failed to reset password.", error: err2.message });
+      return res.status(200).json({ success: true, generatedPassword: plainPassword });
+    });
+  });
+};
+
+module.exports = { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead, resetSchoolHeadPassword };
