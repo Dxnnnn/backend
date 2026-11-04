@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS \`subjects\` (
   \`strand\` varchar(50) DEFAULT NULL,
   \`faculty_id\` int DEFAULT NULL,
   \`faculty_name\` varchar(150) DEFAULT NULL,
+  \`section\` varchar(100) DEFAULT NULL,
   \`created_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   \`updated_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (\`id\`),
@@ -343,6 +344,56 @@ BEGIN
 END;
 CALL alter_students_section();
 DROP PROCEDURE IF EXISTS alter_students_section;
+
+-- 12. Add section column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_section;
+CREATE PROCEDURE alter_subjects_section()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'section'
+  ) THEN
+    ALTER TABLE \`subjects\` ADD COLUMN \`section\` VARCHAR(100) DEFAULT NULL AFTER \`strand\`;
+  END IF;
+END;
+CALL alter_subjects_section();
+DROP PROCEDURE IF EXISTS alter_subjects_section;
+
+-- 13. Widen subjects.grade to VARCHAR(100) for comma-joined multi-grade values
+DROP PROCEDURE IF EXISTS alter_subjects_grade_width;
+CREATE PROCEDURE alter_subjects_grade_width()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'grade'
+      AND CHARACTER_MAXIMUM_LENGTH < 100
+  ) THEN
+    ALTER TABLE \`subjects\` MODIFY COLUMN \`grade\` VARCHAR(100) DEFAULT NULL;
+  END IF;
+END;
+CALL alter_subjects_grade_width();
+DROP PROCEDURE IF EXISTS alter_subjects_grade_width;
+
+-- 14. Widen subjects.course to VARCHAR(200) for comma-joined multi-course values
+DROP PROCEDURE IF EXISTS alter_subjects_course_width;
+CREATE PROCEDURE alter_subjects_course_width()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'course'
+      AND CHARACTER_MAXIMUM_LENGTH < 200
+  ) THEN
+    ALTER TABLE \`subjects\` MODIFY COLUMN \`course\` VARCHAR(200) DEFAULT NULL;
+  END IF;
+END;
+CALL alter_subjects_course_width();
+DROP PROCEDURE IF EXISTS alter_subjects_course_width;
 `;
 
 // ── Foreign Key alterations ────────────────────────────────────────────────
