@@ -17,6 +17,9 @@ function mapRow(row) {
     grade: row.grade ?? null,
     strand: row.strand ?? null,
     section: row.section ?? null,
+    roomNo: row.room_no ?? null,
+    scheduleDay: row.schedule_day ?? null,
+    scheduleTime: row.schedule_time ?? null,
     facultyId: row.faculty_id ?? null,
     facultyName: row.faculty_name ?? null,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -71,7 +74,7 @@ const getSubjects = (req, res) => {
 
 // POST /api/subjects
 const createSubject = (req, res) => {
-  const { name, department, yearLevel, course, grade, strand, section, facultyId, facultyName } = req.body ?? {};
+  const { name, department, yearLevel, course, grade, strand, section, roomNo, scheduleDay, scheduleTime, facultyId, facultyName } = req.body ?? {};
 
   if (!name?.trim()) return res.status(400).json({ success: false, message: "Subject name is required." });
   if (!VALID_DEPARTMENTS.has(department)) return res.status(400).json({ success: false, message: "Invalid department." });
@@ -89,7 +92,7 @@ const createSubject = (req, res) => {
   }
 
   db.query(
-    `INSERT INTO subjects (name, department, year_level, course, grade, strand, section, faculty_id, faculty_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO subjects (name, department, year_level, course, grade, strand, section, room_no, schedule_day, schedule_time, faculty_id, faculty_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       name.trim(), department,
       department === "college" ? yearLevel : null,
@@ -97,6 +100,9 @@ const createSubject = (req, res) => {
       department !== "college" ? String(grade) : null,
       department === "senior-high" ? strand : null,
       section ?? null,
+      roomNo ?? null,
+      scheduleDay ?? null,
+      scheduleTime ?? null,
       facultyId ?? null, facultyName ?? null,
     ],
     (err, result) => {
@@ -109,11 +115,13 @@ const createSubject = (req, res) => {
         grade: department !== "college" ? String(grade) : null,
         strand: department === "senior-high" ? strand : null,
         section: section ?? null,
+        roomNo: roomNo ?? null,
+        scheduleDay: scheduleDay ?? null,
+        scheduleTime: scheduleTime ?? null,
         facultyId: facultyId ?? null, facultyName: facultyName ?? null,
         createdAt: new Date().toISOString(),
       };
 
-      // Sync faculty.subjects if a teacher was assigned
       if (facultyId) {
         syncFacultySubjects(facultyId, () => {
           return res.status(201).json({ success: true, subject: newSubject });
@@ -128,17 +136,16 @@ const createSubject = (req, res) => {
 // PUT /api/subjects/:id
 const updateSubject = (req, res) => {
   const { id } = req.params;
-  const { name, department, yearLevel, course, grade, strand, section, facultyId, facultyName } = req.body ?? {};
+  const { name, department, yearLevel, course, grade, strand, section, roomNo, scheduleDay, scheduleTime, facultyId, facultyName } = req.body ?? {};
 
   if (!name?.trim()) return res.status(400).json({ success: false, message: "Subject name is required." });
 
-  // Get the old faculty_id before updating so we can sync the old teacher too
   db.query(`SELECT faculty_id FROM subjects WHERE id = ?`, [id], (err, rows) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
     const oldFacultyId = rows?.[0]?.faculty_id ?? null;
 
     db.query(
-      `UPDATE subjects SET name=?, department=?, year_level=?, course=?, grade=?, strand=?, section=?, faculty_id=?, faculty_name=? WHERE id=?`,
+      `UPDATE subjects SET name=?, department=?, year_level=?, course=?, grade=?, strand=?, section=?, room_no=?, schedule_day=?, schedule_time=?, faculty_id=?, faculty_name=? WHERE id=?`,
       [
         name.trim(), department,
         department === "college" ? yearLevel ?? null : null,
@@ -146,6 +153,9 @@ const updateSubject = (req, res) => {
         department !== "college" ? String(grade ?? "") : null,
         department === "senior-high" ? strand ?? null : null,
         section ?? null,
+        roomNo ?? null,
+        scheduleDay ?? null,
+        scheduleTime ?? null,
         facultyId ?? null, facultyName ?? null, id,
       ],
       (err2, result) => {

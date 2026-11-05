@@ -194,6 +194,35 @@ const getFacultyForStudent = (req, res) => {
       return res.status(200).json({ success: true, faculty: [] });
     }
 
+    // Also get the actual matching subject names for each faculty
+    // so frontend only shows relevant subjects per teacher
+    let matchingSubjectsSql = `SELECT faculty_id, name, room_no, schedule_day, schedule_time FROM subjects WHERE department = ? AND faculty_id IS NOT NULL AND faculty_id IN (${facultyIds.map(() => "?").join(",")})`;
+    const matchingSubjectsParams = [department, ...facultyIds];
+
+    if (department === "college") {
+      if (year_level) { matchingSubjectsSql += ` AND year_level = ?`; matchingSubjectsParams.push(year_level); }
+      if (course) {
+        matchingSubjectsSql += ` AND (course = ? OR course LIKE ? OR course LIKE ? OR course LIKE ?)`;
+        matchingSubjectsParams.push(course, `${course},%`, `%,${course}`, `%,${course},%`);
+      }
+    } else {
+      if (grade) {
+        const normalizedGrade = grade.replace(/^Grade\s*/i, '').trim();
+        matchingSubjectsSql += ` AND (grade = ? OR grade LIKE ? OR grade LIKE ? OR grade LIKE ?)`;
+        matchingSubjectsParams.push(normalizedGrade, `${normalizedGrade},%`, `%,${normalizedGrade}`, `%,${normalizedGrade},%`);
+      }
+      if (department === "senior-high" && strand) {
+        matchingSubjectsSql += ` AND (strand = ? OR strand LIKE ? OR strand LIKE ? OR strand LIKE ?)`;
+        matchingSubjectsParams.push(strand, `${strand},%`, `%,${strand}`, `%,${strand},%`);
+      }
+    }
+    if (section) {
+      matchingSubjectsSql += ` AND (section = ? OR section IS NULL OR section = '')`;
+      matchingSubjectsParams.push(section);
+    } else {
+      matchingSubjectsSql += ` AND (section IS NULL OR section = '')`;
+    }
+
     // Get faculty details for matching faculty IDs
     let facultySql = `SELECT id, name, email, position, department, subjects, semester, profile_image, is_active, created_at 
                       FROM faculty WHERE id IN (${facultyIds.map(() => "?").join(",")}) AND is_active = 1`;
@@ -207,15 +236,45 @@ const getFacultyForStudent = (req, res) => {
 
     facultySql += ` ORDER BY name ASC`;
 
+    // Run both queries in parallel
+    db.query(matchingSubjectsSql, matchingSubjectsParams, (errS, subjectNameResults) => {
+      if (errS) {
+        console.error('[getFacultyForStudent] Subject names query error:', errS);
+        return res.status(500).json({ success: false, message: "Database error.", error: errS.message });
+      }
+
+      // Build a map: facultyId -> [{ name, roomNo, scheduleDay, scheduleTime }, ...]
+      const subjectsByFaculty = new Map();
+      for (const row of subjectNameResults) {
+        if (!subjectsByFaculty.has(row.faculty_id)) subjectsByFaculty.set(row.faculty_id, []);
+        subjectsByFaculty.get(row.faculty_id).push({
+          name: row.name,
+          roomNo: row.room_no ?? null,
+          scheduleDay: row.schedule_day ?? null,
+          scheduleTime: row.schedule_time ?? null,
+        });
+      }
+
     db.query(facultySql, facultyParams, (err2, results) => {
       if (err2) {
         console.error('[getFacultyForStudent] Faculty query error:', err2);
         return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
       }
-      console.log('[getFacultyForStudent] Faculty results:', results);
-      return res.status(200).json({ success: true, faculty: results });
+
+      // Override each faculty's subjects with only the matching ones (with room/schedule)
+      const filteredFaculty = results.map(f => ({
+        ...f,
+        subjects: subjectsByFaculty.has(f.id)
+          ? subjectsByFaculty.get(f.id).map(s => s.name).join(",")
+          : f.subjects,
+        subjectDetails: subjectsByFaculty.get(f.id) ?? [],
+      }));
+
+      console.log('[getFacultyForStudent] Faculty results:', filteredFaculty);
+      return res.status(200).json({ success: true, faculty: filteredFaculty });
     });
-  });
+    }); // close matchingSubjectsSql callback
+  }); // close subjectsSql callback
 };
 
 module.exports = { 

@@ -136,6 +136,9 @@ CREATE TABLE IF NOT EXISTS \`subjects\` (
   \`faculty_id\` int DEFAULT NULL,
   \`faculty_name\` varchar(150) DEFAULT NULL,
   \`section\` varchar(100) DEFAULT NULL,
+  \`room_no\` varchar(100) DEFAULT NULL,
+  \`schedule_day\` varchar(100) DEFAULT NULL,
+  \`schedule_time\` varchar(100) DEFAULT NULL,
   \`created_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   \`updated_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (\`id\`),
@@ -394,6 +397,54 @@ BEGIN
 END;
 CALL alter_subjects_course_width();
 DROP PROCEDURE IF EXISTS alter_subjects_course_width;
+
+-- 15. Add room_no column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_room_no;
+CREATE PROCEDURE alter_subjects_room_no()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'room_no'
+  ) THEN
+    ALTER TABLE \`subjects\` ADD COLUMN \`room_no\` VARCHAR(100) DEFAULT NULL AFTER \`section\`;
+  END IF;
+END;
+CALL alter_subjects_room_no();
+DROP PROCEDURE IF EXISTS alter_subjects_room_no;
+
+-- 16. Add schedule_day column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_schedule_day;
+CREATE PROCEDURE alter_subjects_schedule_day()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'schedule_day'
+  ) THEN
+    ALTER TABLE \`subjects\` ADD COLUMN \`schedule_day\` VARCHAR(100) DEFAULT NULL AFTER \`room_no\`;
+  END IF;
+END;
+CALL alter_subjects_schedule_day();
+DROP PROCEDURE IF EXISTS alter_subjects_schedule_day;
+
+-- 17. Add schedule_time column to subjects if it does not exist
+DROP PROCEDURE IF EXISTS alter_subjects_schedule_time;
+CREATE PROCEDURE alter_subjects_schedule_time()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'subjects'
+      AND COLUMN_NAME  = 'schedule_time'
+  ) THEN
+    ALTER TABLE \`subjects\` ADD COLUMN \`schedule_time\` VARCHAR(100) DEFAULT NULL AFTER \`schedule_day\`;
+  END IF;
+END;
+CALL alter_subjects_schedule_time();
+DROP PROCEDURE IF EXISTS alter_subjects_schedule_time;
 `;
 
 // ── Foreign Key alterations ────────────────────────────────────────────────
