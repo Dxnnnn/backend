@@ -63,10 +63,16 @@ const getAllFaculty = (req, res) => {
 
 const getFacultyByDepartment = (req, res) => {
   const department = decodeURIComponent(req.params.department);
-  const { semester } = req.query;
+  const { semester, include_empty_subjects } = req.query;
 
   // Use LIKE so "Senior High School" matches "Senior High School (Grade 11 - STEM - Section A)"
+  // For the school head evaluate flow, exclude faculty with no assigned subjects.
+  // For the admin subjects-assignment dropdown, include_empty_subjects=1 bypasses that filter.
+  const skipEmptyFilter = include_empty_subjects === '1';
   let sql = `SELECT id, name, email, position, department, subjects, semester, profile_image, created_at FROM faculty WHERE department LIKE ? AND is_active = 1`;
+  if (!skipEmptyFilter) {
+    sql += ` AND subjects IS NOT NULL AND TRIM(subjects) != ''`;
+  }
   const params = [`%${department}%`];
 
   if (semester) {
