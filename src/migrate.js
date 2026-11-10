@@ -316,7 +316,8 @@ END;
 CALL alter_semesters_term_enum();
 DROP PROCEDURE IF EXISTS alter_semesters_term_enum;
 
--- 10. Add subjects column to students if it does not existDROP PROCEDURE IF EXISTS alter_students_subjects;
+-- 10. Add subjects column to students if it does not exist
+DROP PROCEDURE IF EXISTS alter_students_subjects;
 CREATE PROCEDURE alter_students_subjects()
 BEGIN
   IF NOT EXISTS (
@@ -492,6 +493,7 @@ CALL alter_students_irregular();
 DROP PROCEDURE IF EXISTS alter_students_irregular;
 
 -- 20. Create admin_permissions table for granular RBAC
+CREATE TABLE IF NOT EXISTS \`admin_permissions\` (
   \`id\`         INT NOT NULL AUTO_INCREMENT,
   \`admin_id\`   INT NOT NULL,
   \`permission\` VARCHAR(100) NOT NULL,
