@@ -172,4 +172,36 @@ const resetSchoolHeadPassword = (req, res) => {
   });
 };
 
-module.exports = { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead, resetSchoolHeadPassword };
+const changeSchoolHeadPassword = (req, res) => {
+  const { newPassword } = req.body ?? {};
+  const idNumber = req.user?.username; // username = id_number in JWT
+
+  if (!newPassword) {
+    return res.status(400).json({ success: false, message: "New password is required." });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
+  }
+
+  const hashed = bcrypt.hashSync(newPassword, 12);
+  db.query("UPDATE school_heads SET password = ? WHERE id_number = ? AND is_active = 1", [hashed, idNumber], (err, result) => {
+    if (err) return res.status(500).json({ success: false, message: "Failed to update password.", error: err.message });
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "School head not found." });
+    return res.status(200).json({ success: true, message: "Password updated successfully." });
+  });
+};
+
+const getMySchoolHeadProfile = (req, res) => {
+  const idNumber = req.user?.username;
+  db.query(
+    "SELECT id, id_number, full_name, department, is_active FROM school_heads WHERE id_number = ? AND is_active = 1",
+    [idNumber],
+    (err, rows) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+      if (!rows.length) return res.status(404).json({ success: false, message: "School head not found." });
+      return res.status(200).json({ success: true, schoolHead: rows[0] });
+    }
+  );
+};
+
+module.exports = { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead, resetSchoolHeadPassword, changeSchoolHeadPassword, getMySchoolHeadProfile };

@@ -83,31 +83,56 @@ const deleteAdmin = (req, res) => {
   });
 };
 
-// PUT /api/admins/me/password — change own password
+// PUT /api/admins/me/password — change own password (no current password required)
 const changePassword = (req, res) => {
-  const { currentPassword, newPassword } = req.body ?? {};
+  const { newPassword } = req.body ?? {};
   const adminId = req.user?.id;
 
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ success: false, message: "Current and new password are required." });
+  if (!newPassword) {
+    return res.status(400).json({ success: false, message: "New password is required." });
   }
   if (newPassword.length < 8) {
     return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
   }
 
-  db.query("SELECT password FROM admins WHERE id = ?", [adminId], async (err, results) => {
+  const hashed = bcrypt.hashSync(newPassword, 12);
+  db.query("UPDATE admins SET password = ? WHERE id = ?", [hashed, adminId], (err) => {
+    if (err) return res.status(500).json({ success: false, message: "Failed to update password.", error: err.message });
+    return res.status(200).json({ success: true, message: "Password updated successfully." });
+  });
+};
+
+// PATCH /api/admins/:id/reset-password — Super Admin resets an EO/DC password
+const resetAdminPassword = (req, res) => {
+  const { id } = req.params;
+  const superAdminId = req.user?.id;
+
+  if (String(superAdminId) === String(id)) {
+    return res.status(400).json({ success: false, message: "You cannot reset your own password this way." });
+  }
+
+  // Fetch the admin's name to build a readable temp password
+  db.query("SELECT full_name, role FROM admins WHERE id = ?", [id], (err, rows) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (!results.length) return res.status(404).json({ success: false, message: "Admin not found." });
+    if (!rows.length) return res.status(404).json({ success: false, message: "Admin not found." });
 
-    const isMatch = await bcrypt.compare(currentPassword, results[0].password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Current password is incorrect." });
+    const { role } = rows[0];
+    const validRoles = ["Executive Office", "Data Center"];
+    if (!validRoles.includes(role)) {
+      return res.status(403).json({ success: false, message: "Can only reset EO or DC passwords." });
+    }
 
-    const hashed = bcrypt.hashSync(newPassword, 12);
-    db.query("UPDATE admins SET password = ? WHERE id = ?", [hashed, adminId], (err2) => {
-      if (err2) return res.status(500).json({ success: false, message: "Failed to update password.", error: err2.message });
-      return res.status(200).json({ success: true, message: "Password updated successfully." });
+    // Generate a temp password: BC@ + role prefix + 4-digit random
+    const prefix = role === "Executive Office" ? "eo" : "dc";
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    const tempPassword = `BC@${prefix}${rand}`;
+    const hashed = bcrypt.hashSync(tempPassword, 12);
+
+    db.query("UPDATE admins SET password = ? WHERE id = ?", [hashed, id], (err2) => {
+      if (err2) return res.status(500).json({ success: false, message: "Failed to reset password.", error: err2.message });
+      return res.status(200).json({ success: true, generatedPassword: tempPassword });
     });
   });
 };
 
-module.exports = { getAllAdmins, createAdmin, toggleAdminStatus, deleteAdmin, changePassword };
+module.exports = { getAllAdmins, createAdmin, toggleAdminStatus, deleteAdmin, changePassword, resetAdminPassword };

@@ -1,10 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead, resetSchoolHeadPassword } = require("../controller/schoolHeadController");
+const { createSchoolHead, getAllSchoolHeads, deleteSchoolHead, loginSchoolHead, toggleSchoolHeadStatus, updateSchoolHead, resetSchoolHeadPassword, changeSchoolHeadPassword, getMySchoolHeadProfile } = require("../controller/schoolHeadController");
 const { verifyToken, requireRole, requirePermission } = require("../middleware/verifyToken");
 
 // Public — login
 router.post("/login", loginSchoolHead);
+
+// School head self — profile + change password (uses school head JWT)
+router.get("/me", verifyToken, getMySchoolHeadProfile);
+router.put("/me/password", verifyToken, changeSchoolHeadPassword);
 
 // Protected — admin with "accounts.school_head" permission
 router.get("/", verifyToken, requireRole("admin"), requirePermission("accounts.school_head"), getAllSchoolHeads);

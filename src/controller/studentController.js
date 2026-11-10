@@ -330,6 +330,25 @@ const resetStudentPassword = (req, res) => {
   });
 };
 
+const changeStudentPassword = (req, res) => {
+  const { newPassword } = req.body ?? {};
+  const studentId = req.user?.username;
+
+  if (!newPassword) {
+    return res.status(400).json({ success: false, message: "New password is required." });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
+  }
+
+  const hashed = bcrypt.hashSync(newPassword, 12);
+  db.query("UPDATE students SET password = ? WHERE student_id = ? AND is_active = 1", [hashed, studentId], (err, result) => {
+    if (err) return res.status(500).json({ success: false, message: "Failed to update password.", error: err.message });
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Student not found." });
+    return res.status(200).json({ success: true, message: "Password updated successfully." });
+  });
+};
+
 const getMyProfile = (req, res) => {
   // req.user is set by verifyToken middleware
   const studentId = req.user?.username; // username = student_id string
@@ -358,4 +377,5 @@ module.exports = {
   getStudentsByFaculty,
   resetStudentPassword,
   getMyProfile,
+  changeStudentPassword,
 };
