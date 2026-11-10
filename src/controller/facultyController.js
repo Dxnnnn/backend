@@ -187,6 +187,10 @@ const getFacultyForStudent = (req, res) => {
   if (subjects && typeof subjects === "string" && subjects.trim()) {
     const subjectList = subjects.split(",").map((s) => s.trim()).filter(Boolean);
     if (subjectList.length > 0) {
+      // Map student_level to the subjects.department enum value
+      const deptForLevel = student_level === "junior-high" ? "junior-high" :
+                           student_level === "senior-high" ? "senior-high" : "college";
+
       const placeholders = subjectList.map(() => "?").join(",");
       const sql = `
         SELECT DISTINCT f.id, f.name, f.email, f.position, f.department, f.subjects,
@@ -195,11 +199,12 @@ const getFacultyForStudent = (req, res) => {
         FROM subjects sub
         JOIN faculty f ON f.id = sub.faculty_id
         WHERE sub.name IN (${placeholders})
+          AND sub.department = ?
           AND f.is_active = 1
           AND sub.faculty_id IS NOT NULL
         ORDER BY f.name ASC
       `;
-      db.query(sql, subjectList, (err, results) => {
+      db.query(sql, [...subjectList, deptForLevel], (err, results) => {
         if (err) {
           return res.status(500).json({ success: false, message: "Database error.", error: err.message });
         }

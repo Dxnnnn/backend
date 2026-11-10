@@ -330,6 +330,24 @@ const resetStudentPassword = (req, res) => {
   });
 };
 
+const getMyProfile = (req, res) => {
+  // req.user is set by verifyToken middleware
+  const studentId = req.user?.username; // username = student_id string
+  if (!studentId) return res.status(401).json({ success: false, message: "Unauthorized." });
+
+  db.query(
+    `SELECT id, student_id, first_name, last_name, email, student_level,
+            grade, year_level, section, strand, course, subjects, is_irregular, is_active
+     FROM students WHERE student_id = ? AND is_active = 1`,
+    [studentId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+      if (!rows.length) return res.status(404).json({ success: false, message: "Student not found." });
+      return res.status(200).json({ success: true, student: rows[0] });
+    }
+  );
+};
+
 module.exports = { 
   createStudent, 
   getAllStudents, 
@@ -339,4 +357,5 @@ module.exports = {
   updateStudent,
   getStudentsByFaculty,
   resetStudentPassword,
+  getMyProfile,
 };

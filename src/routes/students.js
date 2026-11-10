@@ -9,11 +9,15 @@ const {
   updateStudent,
   getStudentsByFaculty,
   resetStudentPassword,
+  getMyProfile,
 } = require("../controller/studentController");
 const { verifyToken, requireRole, requirePermission } = require("../middleware/verifyToken");
 
 // Public — login
 router.post("/login", loginStudent);
+
+// Student self — fetch own fresh profile (uses student JWT)
+router.get("/me", verifyToken, getMyProfile);
 
 // Protected — admin with "accounts.student" permission
 router.get("/", verifyToken, requireRole("admin"), requirePermission("accounts.student"), getAllStudents);
