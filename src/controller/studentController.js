@@ -15,7 +15,7 @@ function generateStudentPassword(student_id, last_name) {
 }
 
 const createStudent = (req, res) => {
-  const { student_id, first_name, last_name, email, student_level, grade, year_level, section, strand, course, subjects } = req.body;
+  const { student_id, first_name, last_name, email, student_level, grade, year_level, section, strand, course, subjects, is_irregular } = req.body;
 
   if (!student_id || !first_name || !last_name || !email || !student_level) {
     return res.status(400).json({ success: false, message: "Student ID, name, email, and student level are required." });
@@ -27,27 +27,26 @@ const createStudent = (req, res) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
     if (results.length > 0) return res.status(409).json({ success: false, message: "Student ID or email already exists." });
 
-    // Auto-generate password
     const plainPassword = generateStudentPassword(student_id.trim(), last_name.trim());
     const hashedPassword = bcrypt.hashSync(plainPassword, 12);
     const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects ?? null);
+    const irregularFlag = is_irregular ? 1 : 0;
 
     const insertSql = `
-      INSERT INTO students (student_id, first_name, last_name, email, password, student_level, grade, year_level, section, strand, course, subjects)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO students (student_id, first_name, last_name, email, password, student_level, grade, year_level, section, strand, course, subjects, is_irregular)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(insertSql, [
       student_id.trim(), first_name.trim(), last_name.trim(), email.trim(),
       hashedPassword, student_level, grade ?? null, year_level ?? null,
-      section ?? null, strand ?? null, course ?? null, subjectsStr,
+      section ?? null, strand ?? null, course ?? null, subjectsStr, irregularFlag,
     ], (err, result) => {
       if (err) return res.status(500).json({ success: false, message: "Failed to create student.", error: err.message });
 
       return res.status(201).json({
         success: true,
         message: "Student created successfully.",
-        // Return plaintext password ONCE so admin can share it
         generatedPassword: plainPassword,
         student: {
           id: result.insertId,
@@ -56,6 +55,7 @@ const createStudent = (req, res) => {
           last_name: last_name.trim(),
           email: email.trim(),
           student_level,
+          is_irregular: irregularFlag,
           subjects: subjectsStr,
           created_at: new Date().toISOString(),
         },
@@ -168,6 +168,8 @@ const loginStudent = (req, res) => {
         strand: student.strand ?? null,
         course: student.course ?? null,
         section: student.section ?? null,
+        is_irregular: student.is_irregular === 1,
+        subjects: student.subjects ?? null,
         role: "user",
       },
     });
@@ -187,23 +189,24 @@ const toggleStudentStatus = (req, res) => {
 
 const updateStudent = (req, res) => {
   const { id } = req.params;
-  const { student_id, first_name, last_name, email, student_level, grade, year_level, section, strand, course, subjects } = req.body;
+  const { student_id, first_name, last_name, email, student_level, grade, year_level, section, strand, course, subjects, is_irregular } = req.body;
 
   if (!first_name || !last_name || !email || !student_level) {
     return res.status(400).json({ success: false, message: "Name, email, and student level are required." });
   }
 
   const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects ?? null);
+  const irregularFlag = is_irregular ? 1 : 0;
 
   const sql = `
     UPDATE students SET student_id=?, first_name=?, last_name=?, email=?, student_level=?,
-    grade=?, year_level=?, section=?, strand=?, course=?, subjects=? WHERE id=?
+    grade=?, year_level=?, section=?, strand=?, course=?, subjects=?, is_irregular=? WHERE id=?
   `;
 
   db.query(sql, [
     student_id?.trim() ?? null,
     first_name.trim(), last_name.trim(), email.trim(), student_level,
-    grade ?? null, year_level ?? null, section ?? null, strand ?? null, course ?? null, subjectsStr, id,
+    grade ?? null, year_level ?? null, section ?? null, strand ?? null, course ?? null, subjectsStr, irregularFlag, id,
   ], (err, result) => {
     if (err) {
       if (err.code === "ER_DUP_ENTRY") {

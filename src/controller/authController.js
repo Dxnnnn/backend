@@ -34,8 +34,15 @@ const loginAdmin = (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
+    // Block deactivated accounts from logging in
+    if (!admin.is_active) {
+      return res.status(403).json({ success: false, message: "Your account has been deactivated. Please contact the Super Admin." });
+    }
+
+    const adminSubRole = admin.role ?? "Data Center";
+
     const token = jwt.sign(
-      { id: admin.id, username: admin.username, role: "admin" },
+      { id: admin.id, username: admin.username, role: "admin", admin_role: adminSubRole },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
@@ -50,6 +57,7 @@ const loginAdmin = (req, res) => {
         email: admin.email,
         full_name: admin.full_name,
         role: "admin",
+        admin_role: adminSubRole, // from DB: "Executive Office" | "Data Center"
       },
     });
   });

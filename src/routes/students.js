@@ -10,20 +10,20 @@ const {
   getStudentsByFaculty,
   resetStudentPassword,
 } = require("../controller/studentController");
-const { verifyToken, requireRole } = require("../middleware/verifyToken");
+const { verifyToken, requireRole, requirePermission } = require("../middleware/verifyToken");
 
 // Public — login
 router.post("/login", loginStudent);
 
-// Protected — admin only (manage student accounts)
-router.get("/", verifyToken, requireRole("admin"), getAllStudents);
-router.post("/", verifyToken, requireRole("admin"), createStudent);
-router.put("/:id", verifyToken, requireRole("admin"), updateStudent);
-router.patch("/:id/toggle", verifyToken, requireRole("admin"), toggleStudentStatus);
-router.patch("/:id/reset-password", verifyToken, requireRole("admin"), resetStudentPassword);
-router.delete("/:id", verifyToken, requireRole("admin"), deleteStudent);
+// Protected — admin with "accounts.student" permission
+router.get("/", verifyToken, requireRole("admin"), requirePermission("accounts.student"), getAllStudents);
+router.post("/", verifyToken, requireRole("admin"), requirePermission("accounts.student"), createStudent);
+router.put("/:id", verifyToken, requireRole("admin"), requirePermission("accounts.student"), updateStudent);
+router.patch("/:id/toggle", verifyToken, requireRole("admin"), requirePermission("accounts.student"), toggleStudentStatus);
+router.patch("/:id/reset-password", verifyToken, requireRole("admin"), requirePermission("accounts.student"), resetStudentPassword);
+router.delete("/:id", verifyToken, requireRole("admin"), requirePermission("accounts.student"), deleteStudent);
 
-// Get students assigned to a specific faculty
+// Get students assigned to a specific faculty (any admin, no submodule restriction)
 router.get("/by-faculty/:facultyId", verifyToken, getStudentsByFaculty);
 
 module.exports = router;

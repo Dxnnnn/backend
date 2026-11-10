@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS \`admins\` (
   UNIQUE KEY \`email\` (\`email\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT IGNORE INTO \`admins\` VALUES (2,'admin@bc.com','admin@example.com','$2b$12$SozPLBiMbL3aqD6UW/VUzeyYeP.NCNzpfiShDmpxAodvHYoDzQSEW','Administrator','09123456789',1,NULL,'2026-07-19 15:58:15','2026-07-19 15:58:15');
+INSERT IGNORE INTO \`admins\` (id, username, email, password, full_name, phone, is_active, last_login, created_at, updated_at) VALUES (2,'admin@bc.com','admin@example.com','$2b$12$SozPLBiMbL3aqD6UW/VUzeyYeP.NCNzpfiShDmpxAodvHYoDzQSEW','Administrator','09123456789',1,NULL,'2026-07-19 15:58:15','2026-07-19 15:58:15');
 
 CREATE TABLE IF NOT EXISTS \`school_heads\` (
   \`id\` int NOT NULL AUTO_INCREMENT,
@@ -445,6 +445,64 @@ BEGIN
 END;
 CALL alter_subjects_schedule_time();
 DROP PROCEDURE IF EXISTS alter_subjects_schedule_time;
+
+-- 18. Add role column to admins if it does not exist
+DROP PROCEDURE IF EXISTS alter_admins_role;
+CREATE PROCEDURE alter_admins_role()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'admins'
+      AND COLUMN_NAME  = 'role'
+  ) THEN
+    ALTER TABLE \`admins\` ADD COLUMN \`role\` ENUM('Super Admin','Executive Office','Data Center') NOT NULL DEFAULT 'Data Center' AFTER \`full_name\`;
+  END IF;
+END;
+CALL alter_admins_role();
+DROP PROCEDURE IF EXISTS alter_admins_role;
+
+-- 19. Update the seeded Super Admin account to use proper credentials (role = Data Center)
+-- Removes the duplicate mark@gmail.com account and updates the primary admin (id=2)
+-- Password hash below is bcrypt of "Admin@BC2026"
+DELETE FROM \`admins\` WHERE email = 'mark@gmail.com' OR username = 'mark';
+UPDATE \`admins\`
+SET
+  username   = 'superadmin',
+  email      = 'admin@bc.edu.ph',
+  password   = '$2b$12$LNfugsO9AzVugUuqo4na/uWEK25fbSVFYcgqTj6gWujEJX5.SbN76',
+  full_name  = 'Super Administrator',
+  role       = 'Super Admin'
+WHERE id = 2;
+
+-- 19b. Add is_irregular column to students if it does not exist
+DROP PROCEDURE IF EXISTS alter_students_irregular;
+CREATE PROCEDURE alter_students_irregular()
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'students'
+      AND COLUMN_NAME  = 'is_irregular'
+  ) THEN
+    ALTER TABLE \`students\` ADD COLUMN \`is_irregular\` TINYINT(1) NOT NULL DEFAULT 0;
+  END IF;
+END;
+CALL alter_students_irregular();
+DROP PROCEDURE IF EXISTS alter_students_irregular;
+
+-- 20. Create admin_permissions table for granular RBAC
+  \`id\`         INT NOT NULL AUTO_INCREMENT,
+  \`admin_id\`   INT NOT NULL,
+  \`permission\` VARCHAR(100) NOT NULL,
+  \`granted\`    TINYINT(1) NOT NULL DEFAULT 1,
+  \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (\`id\`),
+  UNIQUE KEY \`uniq_admin_perm\` (\`admin_id\`, \`permission\`),
+  CONSTRAINT \`fk_perm_admin\` FOREIGN KEY (\`admin_id\`) REFERENCES \`admins\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 `;
 
 // ── Foreign Key alterations ────────────────────────────────────────────────

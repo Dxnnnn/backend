@@ -1,15 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const { getSemesters, getActiveSemesters, createSemester, toggleSemester, deleteSemester } = require("../controller/semesterController");
-const { verifyToken, requireRole } = require("../middleware/verifyToken");
+const { verifyToken, requireRole, requireAdminSubRole, requirePermission } = require("../middleware/verifyToken");
 
-// Public — students/school heads need active semesters to populate the evaluation form
+// Public
 router.get("/active", getActiveSemesters);
 
-// Protected — viewing all semesters and managing them is admin only
-router.get("/", verifyToken, requireRole("admin"), getSemesters);
-router.post("/", verifyToken, requireRole("admin"), createSemester);
-router.patch("/:id/toggle", verifyToken, requireRole("admin"), toggleSemester);
-router.delete("/:id", verifyToken, requireRole("admin"), deleteSemester);
+// Protected — EO or DC with "semester" permission
+router.get("/", verifyToken, requireRole("admin"), requireAdminSubRole("Executive Office", "Data Center"), requirePermission("semester"), getSemesters);
+router.post("/", verifyToken, requireRole("admin"), requireAdminSubRole("Executive Office", "Data Center"), requirePermission("semester"), createSemester);
+router.patch("/:id/toggle", verifyToken, requireRole("admin"), requireAdminSubRole("Executive Office", "Data Center"), requirePermission("semester"), toggleSemester);
+router.delete("/:id", verifyToken, requireRole("admin"), requireAdminSubRole("Executive Office", "Data Center"), requirePermission("semester"), deleteSemester);
 
 module.exports = router;

@@ -4,10 +4,11 @@ const db = require("../config/db");
 
 const admins = [
   {
-    username: "admin",
-    email: "admin@example.com",
-    password: "Admin123",
-    full_name: "System Administrator",
+    username: "superadmin",
+    email: "admin@bc.edu.ph",
+    password: "Admin@BC2026",
+    full_name: "Super Administrator",
+    role: "Super Admin",
     phone: null,
   },
 ];
@@ -31,13 +32,13 @@ async function seed() {
       }
 
       const insertSql = `
-        INSERT INTO admins (username, email, password, full_name, phone)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO admins (username, email, password, full_name, role, phone)
+        VALUES (?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
         insertSql,
-        [admin.username, admin.email, hashedPassword, admin.full_name, admin.phone],
+        [admin.username, admin.email, hashedPassword, admin.full_name, admin.role, admin.phone],
         (err, result) => {
           if (err) {
             console.error("Error inserting admin:", err.message);

@@ -36,8 +36,8 @@ const createEvaluation = (req, res) => {
         const shId = shRows?.[0]?.id ?? null;
         if (shId) {
           db.query(
-            `SELECT id FROM evaluation_submissions WHERE school_head_id = ? AND faculty_id = ? AND (semester = ? OR semester IS NULL) AND source = 'school_head' LIMIT 1`,
-            [shId, String(faculty_id), semester ?? null],
+            `SELECT id FROM evaluation_submissions WHERE school_head_id = ? AND faculty_id = ? AND subject = ? AND (semester = ? OR semester IS NULL) AND source = 'school_head' LIMIT 1`,
+            [shId, String(faculty_id), subject ?? null, semester ?? null],
             (checkErr, existing) => {
               if (checkErr) return res.status(500).json({ success: false, message: "Database error.", error: checkErr.message });
               if (existing && existing.length > 0) {

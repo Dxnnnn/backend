@@ -43,4 +43,57 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { verifyToken, requireRole };
+/**
+ * Admin sub-role guard factory.
+ * Checks req.user.admin_role (set from JWT payload).
+ * Usage: requireAdminSubRole("Executive Office")
+ *        requireAdminSubRole("Data Center")
+ *        requireAdminSubRole("Executive Office", "Data Center")  — allow both
+ */
+function requireAdminSubRole(...subRoles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Not authenticated." });
+    }
+    if (!subRoles.includes(req.user.admin_role)) {
+      return res.status(403).json({ success: false, message: "Forbidden. Your role does not have permission for this action." });
+    }
+    return next();
+  };
+}
+
+/**
+ * Granular permission guard factory.
+ * Checks that the authenticated admin has the given permission key granted
+ * in the admin_permissions table.
+ *
+ * Super Admin (role === "Super Admin") bypasses all permission checks.
+ *
+ * Usage:
+ *   router.get("/", verifyToken, requireRole("admin"), requirePermission("accounts.student"), handler)
+ */
+function requirePermission(permissionKey) {
+  const db = require("../config/db");
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Not authenticated." });
+    }
+    // Super Admin always has access
+    if (req.user.admin_role === "Super Admin") {
+      return next();
+    }
+    db.query(
+      "SELECT granted FROM admin_permissions WHERE admin_id = ? AND permission = ?",
+      [req.user.id, permissionKey],
+      (err, rows) => {
+        if (err) return res.status(500).json({ success: false, message: "Database error." });
+        if (!rows.length || rows[0].granted !== 1) {
+          return res.status(403).json({ success: false, message: "Forbidden. You do not have permission for this module." });
+        }
+        return next();
+      }
+    );
+  };
+}
+
+module.exports = { verifyToken, requireRole, requireAdminSubRole, requirePermission };

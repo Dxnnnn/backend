@@ -8,6 +8,8 @@ const VALID_GRADES_SHS = new Set(["11", "12"]);
 const VALID_STRANDS = new Set(["STEM", "HUMSS", "ABM", "GAS", "TVL", "ICT", "HE", "IA"]);
 
 function mapRow(row) {
+  // If faculty_id is NULL (faculty deleted/deactivated), also clear faculty_name
+  const facultyId = row.faculty_id ?? null;
   return {
     id: row.id,
     name: row.name,
@@ -20,8 +22,8 @@ function mapRow(row) {
     roomNo: row.room_no ?? null,
     scheduleDay: row.schedule_day ?? null,
     scheduleTime: row.schedule_time ?? null,
-    facultyId: row.faculty_id ?? null,
-    facultyName: row.faculty_name ?? null,
+    facultyId,
+    facultyName: facultyId ? (row.faculty_name ?? null) : null,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
   };

@@ -84,20 +84,50 @@ const getFacultyByDepartment = (req, res) => {
 
 const deleteFaculty = (req, res) => {
   const { id } = req.params;
-  // FK ON DELETE CASCADE automatically removes evaluation_submissions
-  db.query("DELETE FROM faculty WHERE id = ?", [id], (err, result) => {
-    if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
-    return res.status(200).json({ success: true, message: "Faculty and their evaluation records deleted." });
-  });
+  // First clear this faculty from any assigned subjects (set assigned teacher to NULL)
+  db.query(
+    "UPDATE subjects SET faculty_id = NULL, faculty_name = NULL WHERE faculty_id = ?",
+    [id],
+    (errClear) => {
+      if (errClear) return res.status(500).json({ success: false, message: "Database error clearing subjects.", error: errClear.message });
+      // Now delete the faculty record (FK CASCADE removes evaluation_submissions)
+      db.query("DELETE FROM faculty WHERE id = ?", [id], (err, result) => {
+        if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
+        return res.status(200).json({ success: true, message: "Faculty deleted and subject assignments cleared." });
+      });
+    }
+  );
 };
 
 const toggleFacultyStatus = (req, res) => {
   const { id } = req.params;
-  db.query("UPDATE faculty SET is_active = NOT is_active WHERE id = ?", [id], (err, result) => {
+  // Get current status first
+  db.query("SELECT is_active FROM faculty WHERE id = ?", [id], (err, rows) => {
     if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
-    return res.status(200).json({ success: true, message: "Faculty status updated." });
+    if (!rows.length) return res.status(404).json({ success: false, message: "Faculty not found." });
+
+    const currentlyActive = rows[0].is_active === 1;
+
+    // Toggle the status
+    db.query("UPDATE faculty SET is_active = NOT is_active WHERE id = ?", [id], (err2, result) => {
+      if (err2) return res.status(500).json({ success: false, message: "Database error.", error: err2.message });
+      if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
+
+      // If we just DEACTIVATED (was active → now inactive), clear subject assignments
+      if (currentlyActive) {
+        db.query(
+          "UPDATE subjects SET faculty_id = NULL, faculty_name = NULL WHERE faculty_id = ?",
+          [id],
+          () => {
+            // Non-fatal — proceed regardless
+            return res.status(200).json({ success: true, message: "Faculty deactivated and subject assignments cleared." });
+          }
+        );
+      } else {
+        return res.status(200).json({ success: true, message: "Faculty activated." });
+      }
+    });
   });
 };
 
@@ -107,6 +137,20 @@ const updateFaculty = (req, res) => {
 
   if (!name || !department) {
     return res.status(400).json({ success: false, message: "Name and department are required." });
+  }
+
+  // If subjects not provided in the request, preserve the existing value from DB
+  if (subjects === undefined) {
+    db.query(
+      "UPDATE faculty SET name=?, email=?, position=?, department=?, semester=?, profile_image=? WHERE id=?",
+      [name.trim(), email?.trim() ?? null, position?.trim() ?? null, department.trim(), semester ?? null, profile_image ?? null, id],
+      (err, result) => {
+        if (err) return res.status(500).json({ success: false, message: "Failed to update faculty.", error: err.message });
+        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Faculty not found." });
+        return res.status(200).json({ success: true, message: "Faculty updated." });
+      }
+    );
+    return;
   }
 
   const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects ?? "");
@@ -127,11 +171,60 @@ const updateFaculty = (req, res) => {
  * Query params: student_level, year_level, course, grade, strand, section, semester
  */
 const getFacultyForStudent = (req, res) => {
-  const { student_level, year_level, course, grade, strand, section, semester } = req.query;
+  const { student_level, year_level, course, grade, strand, section, semester, subjects } = req.query;
 
   if (!student_level) {
     return res.status(400).json({ success: false, message: "student_level is required." });
   }
+
+  // If specific subjects are saved for this student, filter directly by subject names
+  if (subjects && typeof subjects === "string" && subjects.trim()) {
+    const subjectList = subjects.split(",").map((s) => s.trim()).filter(Boolean);
+    if (subjectList.length > 0) {
+      const placeholders = subjectList.map(() => "?").join(",");
+      const sql = `
+        SELECT DISTINCT f.id, f.name, f.email, f.position, f.department, f.subjects,
+                        f.semester, f.profile_image, f.is_active, f.created_at,
+                        sub.name AS matched_subject, sub.room_no, sub.schedule_day, sub.schedule_time
+        FROM subjects sub
+        JOIN faculty f ON f.id = sub.faculty_id
+        WHERE sub.name IN (${placeholders})
+          AND f.is_active = 1
+          AND sub.faculty_id IS NOT NULL
+        ORDER BY f.name ASC
+      `;
+      db.query(sql, subjectList, (err, results) => {
+        if (err) {
+          return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+        }
+        // Build faculty array with matched subjects grouped by faculty
+        const facultyMap = new Map();
+        for (const row of (results || [])) {
+          if (!facultyMap.has(row.id)) {
+            facultyMap.set(row.id, {
+              id: row.id, name: row.name, email: row.email, position: row.position,
+              department: row.department, subjects: row.subjects, semester: row.semester,
+              profile_image: row.profile_image, is_active: row.is_active, created_at: row.created_at,
+              matchedSubjects: [],
+            });
+          }
+          if (row.matched_subject) {
+            facultyMap.get(row.id).matchedSubjects.push({
+              name: row.matched_subject,
+              roomNo: row.room_no,
+              scheduleDay: row.schedule_day,
+              scheduleTime: row.schedule_time,
+            });
+          }
+        }
+        return res.status(200).json({ success: true, faculty: Array.from(facultyMap.values()) });
+      });
+      return; // prevent fall-through to the rest of the function
+    }
+  }
+
+  // is_irregular flag — irregular students skip section filtering
+  const isIrregular = req.query.is_irregular === "true" || req.query.is_irregular === "1";
 
   // Map student_level to department
   const department = student_level === "junior-high" ? "junior-high" :
@@ -144,34 +237,32 @@ const getFacultyForStudent = (req, res) => {
   if (department === "college") {
     if (year_level) { subjectsSql += ` AND year_level = ?`; params.push(year_level); }
     if (course) {
-      // Handle comma-separated courses in subject
       subjectsSql += ` AND (course = ? OR course LIKE ? OR course LIKE ? OR course LIKE ?)`;
       params.push(course, `${course},%`, `%,${course}`, `%,${course},%`);
     }
   } else {
     if (grade) {
-      // Normalize grade: "Grade 11" -> "11"
       const normalizedGrade = grade.replace(/^Grade\s*/i, '').trim();
-      // Handle comma-separated grades in subject
       subjectsSql += ` AND (grade = ? OR grade LIKE ? OR grade LIKE ? OR grade LIKE ?)`;
       params.push(normalizedGrade, `${normalizedGrade},%`, `%,${normalizedGrade}`, `%,${normalizedGrade},%`);
     }
     if (department === "senior-high" && strand) {
-      // Handle comma-separated strands in subject
       subjectsSql += ` AND (strand = ? OR strand LIKE ? OR strand LIKE ? OR strand LIKE ?)`;
       params.push(strand, `${strand},%`, `%,${strand}`, `%,${strand},%`);
     }
   }
 
-  // Handle section: if subject has section specified, only show to students in that section
-  // If subject has no section (NULL or empty), show to ALL students matching other criteria
-  if (section) {
-    subjectsSql += ` AND (section = ? OR section IS NULL OR section = '')`;
-    params.push(section);
-  } else {
+  // Irregular students: skip section filter entirely — they see all sections
+  // Regular students: only see subjects matching their section (or subjects with no section)
+  if (!isIrregular) {
+    if (section) {
+      subjectsSql += ` AND (section = ? OR section IS NULL OR section = '')`;
+      params.push(section);
+    } else {
     // Student has no section, show subjects with no section requirement
     subjectsSql += ` AND (section IS NULL OR section = '')`;
-  }
+    }
+  } // end !isIrregular
 
   // Debug logging
   console.log('[getFacultyForStudent] Query params:', { student_level, year_level, course, grade, strand, section, semester });

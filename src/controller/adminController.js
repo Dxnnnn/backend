@@ -3,9 +3,9 @@ const db = require("../config/db");
 
 // GET /api/admins — list all admin staff (excludes the super admin seeded account)
 const getAllAdmins = (req, res) => {
-  const superAdminId = req.user?.id; // Current logged-in admin is the super admin
+  const superAdminId = req.user?.id;
   db.query(
-    `SELECT id, username, email, full_name, is_active, created_at FROM admins WHERE id != ? ORDER BY created_at ASC`,
+    `SELECT id, username, email, full_name, role, is_active, created_at FROM admins WHERE id != ? ORDER BY created_at ASC`,
     [superAdminId],
     (err, results) => {
       if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
@@ -16,13 +16,16 @@ const getAllAdmins = (req, res) => {
 
 // POST /api/admins — create a new admin
 const createAdmin = (req, res) => {
-  const { full_name, email, password } = req.body ?? {};
+  const { full_name, email, password, role } = req.body ?? {};
 
   if (!full_name?.trim() || !email?.trim() || !password) {
     return res.status(400).json({ success: false, message: "Full name, email, and password are required." });
   }
 
-  // Use full_name as username (slugified)
+  // Only EO and Data Center can be created; Super Admin is reserved for seeded account
+  const validRoles = ["Executive Office", "Data Center"];
+  const adminRole = validRoles.includes(role) ? role : "Data Center";
+
   const username = full_name.trim().toLowerCase().replace(/\s+/g, ".");
 
   db.query("SELECT id FROM admins WHERE email = ? OR username = ?", [email.trim(), username], (err, results) => {
@@ -31,8 +34,8 @@ const createAdmin = (req, res) => {
 
     const hashedPassword = bcrypt.hashSync(password, 12);
     db.query(
-      `INSERT INTO admins (username, email, password, full_name) VALUES (?, ?, ?, ?)`,
-      [username, email.trim(), hashedPassword, full_name.trim()],
+      `INSERT INTO admins (username, email, password, full_name, role) VALUES (?, ?, ?, ?, ?)`,
+      [username, email.trim(), hashedPassword, full_name.trim(), adminRole],
       (err, result) => {
         if (err) return res.status(500).json({ success: false, message: "Failed to create admin.", error: err.message });
         return res.status(201).json({
@@ -43,6 +46,7 @@ const createAdmin = (req, res) => {
             username,
             email: email.trim(),
             full_name: full_name.trim(),
+            role: adminRole,
             is_active: 1,
             created_at: new Date().toISOString(),
           },
