@@ -1,7 +1,7 @@
 const db = require("../config/db");
 const crypto = require("crypto");
 
-const VALID_TERMS = new Set(["1st Semester", "2nd Semester", "Summer", "Quarter 1 & 2", "Quarter 3 & 4"]);
+const VALID_TERMS = new Set(["1st Semester", "2nd Semester", "Summer", "Quarter 1 & 2", "Quarter 3 & 4", "Quarter 1", "Quarter 2", "Quarter 3", "Quarter 4"]);
 
 function ensureTable(callback) {
   const sql = `
@@ -110,4 +110,22 @@ const deleteSemester = (req, res) => {
   });
 };
 
-module.exports = { getSemesters, getActiveSemesters, createSemester, toggleSemester, deleteSemester };
+// GET /api/semesters/all-public — all semesters, no auth (for school head evaluate page)
+const getAllSemestersPublic = (req, res) => {
+  ensureTable((tableErr) => {
+    if (tableErr) return res.status(500).json({ success: false, message: "Database error.", error: tableErr.message });
+    db.query("SELECT * FROM semesters ORDER BY school_year DESC, term ASC", (err, rows) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error.", error: err.message });
+      const semesters = rows.map((r) => ({
+        id: r.id,
+        schoolYear: r.school_year,
+        term: r.term,
+        is_active: r.is_active,
+        createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+      }));
+      return res.status(200).json({ success: true, semesters });
+    });
+  });
+};
+
+module.exports = { getSemesters, getActiveSemesters, getAllSemestersPublic, createSemester, toggleSemester, deleteSemester };

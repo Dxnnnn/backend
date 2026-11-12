@@ -298,7 +298,7 @@ END;
 CALL alter_subjects_nullable();
 DROP PROCEDURE IF EXISTS alter_subjects_nullable;
 
--- 9a. Expand semesters.term ENUM to include Quarter terms
+-- 9a. Expand semesters.term ENUM to include all individual Quarter terms
 DROP PROCEDURE IF EXISTS alter_semesters_term_enum;
 CREATE PROCEDURE alter_semesters_term_enum()
 BEGIN
@@ -307,10 +307,9 @@ BEGIN
     WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'semesters'
       AND COLUMN_NAME  = 'term'
-      AND COLUMN_TYPE NOT LIKE '%Quarter%'
   ) THEN
     ALTER TABLE \`semesters\`
-      MODIFY COLUMN \`term\` ENUM('1st Semester','2nd Semester','Summer','Quarter 1 & 2','Quarter 3 & 4') NOT NULL;
+      MODIFY COLUMN \`term\` ENUM('1st Semester','2nd Semester','Summer','Quarter 1 & 2','Quarter 3 & 4','Quarter 1','Quarter 2','Quarter 3','Quarter 4') NOT NULL;
   END IF;
 END;
 CALL alter_semesters_term_enum();
